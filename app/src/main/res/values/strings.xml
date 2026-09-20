@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">安心手记</string>
+    <string name="fgs_reason">服药提醒：部分厂商 ROM 会在清理后台时连同已排好的闹钟一起清掉，这时只有保持进程存活才能保证到点提醒不丢。默认关闭，由用户自己决定要不要开。</string>
 </resources>

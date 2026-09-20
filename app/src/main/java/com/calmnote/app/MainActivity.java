@@ -66,6 +66,7 @@ public class MainActivity extends Activity {
 
         Reminders.ensureChannel(this);
         Reminders.rescheduleAll(this);
+        KeepAliveService.start(this);
     }
 
     @Override
@@ -73,6 +74,8 @@ public class MainActivity extends Activity {
         super.onResume();
         // 通知上点过「吃了」的话，数据在原生侧变了，回到前台要重新读一遍。
         Reminders.rescheduleAll(this);
+        // 在前台，这里拉服务不受后台启动限制；顺便把那条常驻通知的「下次」刷新。
+        KeepAliveService.start(this);
         reloadWeb();
         Backups.backup(this, false);
     }
@@ -389,6 +392,20 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String lastFireSlot() {
             return Reminders.lastFireSlot(MainActivity.this);
+        }
+
+        @JavascriptInterface
+        public boolean keepAliveOn() {
+            return KeepAliveService.enabled(MainActivity.this);
+        }
+
+        /** 常驻前台服务开关。只在排查面板里露出，默认关。 */
+        @JavascriptInterface
+        public void setKeepAlive(boolean on) {
+            KeepAliveService.setEnabled(MainActivity.this, on);
+            MainActivity.this.toast(on
+                ? "通知栏会多一条常驻的，它在帮你把提醒钉住"
+                : "已经关掉，常驻通知会消失");
         }
 
         /** 提醒从什么时候开始排上的；界面用它排除「打开提醒之前就过去的那些顿」。 */

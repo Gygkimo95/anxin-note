@@ -114,7 +114,9 @@
 - **渠道属性建完就改不动了**，只有用户能在系统设置里改。所以 0.5.0 把渠道 id 换成 `med-reminder-quiet` 并显式删掉旧的 `med-reminder`，否则从旧版升上来的人还是会被响。以后任何要改渠道属性的改动都得换 id + 删旧的。
 - Android 7 上没有渠道，静音要写在每条通知上（`setDefaults(0).setSound(null).setVibrate(null)`）。
 - **界面措辞一律不用「闹钟」「响」**，用「提醒」「弹出来」。`AlarmManager` 在代码里叫闹钟，但那只是系统的定时器，说给用户听就变成「装了个会叫的东西」——真发生过这个误解。
-- 每一顿一个定时（一天几次就是几个），`AlarmManager.setExactAndAllowWhileIdle` 排下一次，到点之后重排；`SecurityException` 时退回不精确，宁可晚几分钟也别不来。
+- **排程必须用 `setAlarmClock`，不是 `setExactAndAllowWhileIdle`。** 前者是系统给「闹钟类」的最高一档：免 Doze、免 App Standby，而且国产 ROM 普遍会放它过——厂商知道用户指望闹钟响，所以对闹钟手下留情，对普通精确闹钟不会。0.5.0 之前用的是后者，vivo 上到点压根没递进来。代价是状态栏多一个小闹钟图标，可以接受，那也是「提醒确实排上了」的可见证据。三层兜底：`setAlarmClock` → `setExactAndAllowWhileIdle` → 不精确，每层都吃掉异常，个别改过 AlarmManager 的 ROM 不能让整个排程挂掉。
+- 每一顿一个定时（一天几次就是几个），排下一次，到点之后重排。
+- **闹钟活不过强杀，这件事代码里解决不了**——除非进程别死。所以有一个**可选的**常驻前台服务 `KeepAliveService`（默认关，收在排查面板里）：有些 ROM 连 `setAlarmClock` 都会在清后台时一起掐掉，只有前台服务能长期存活。不该为了少数机型让所有人多一条常驻通知，所以默认关。那条常驻通知写「下次 21:00 · 舍曲林」，顺便成了「一眼就看到」的入口；锁屏上设 `VISIBILITY_SECRET`，因为通知栏里写着在吃什么药，不该出现在别人能看见的地方。
 - **不同顿的 PendingIntent 必须真的互不相同**：request code 用 `时*60+分`，并且 Intent 带上不同的 data URI。只靠 extra 区分的话系统会认为是同一个 PendingIntent，多顿会互相覆盖，最后只剩一个闹钟。
 - 已排过的时间点记在 SharedPreferences（不写进 `data.json`，那是用户数据）。重排时先按这份清单全部撤销再重排，否则改过时间的旧闹钟会留在系统里变成幽灵提醒。
 - 开机、对时、换时区、应用更新后闹钟都会丢，`ReminderReceiver` 重新排。

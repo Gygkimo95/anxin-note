@@ -139,10 +139,31 @@ final class Reminders {
     private static void schedule(
         AlarmManager alarms, Context context, String slot, int key, long at
     ) {
-        setAlarm(alarms, alarmIntent(context, slot, key), at);
+        setAlarm(alarms, context, alarmIntent(context, slot, key), at);
     }
 
-    private static void setAlarm(AlarmManager alarms, PendingIntent pending, long at) {
+    /**
+     * 用 setAlarmClock，不用 setExactAndAllowWhileIdle。
+     *
+     * 这是系统给闹钟的最高一档：免 Doze、免 App Standby，而且国产 ROM 普遍会放它过——
+     * 厂商知道用户指望闹钟响，所以对「闹钟类」的定时手下留情，对普通精确闹钟不会。
+     * 0.5.0 之前用的是 setExactAndAllowWhileIdle，在 vivo 上到点压根没递进来。
+     *
+     * 代价是状态栏会出现一个小闹钟图标。可以接受，甚至是好事：
+     * 那是「提醒确实排上了」的可见证据。
+     */
+    private static void setAlarm(AlarmManager alarms, Context context, PendingIntent pending, long at) {
+        try {
+            AlarmManager.AlarmClockInfo info =
+                new AlarmManager.AlarmClockInfo(at, openApp(context));
+            alarms.setAlarmClock(info, pending);
+            return;
+        } catch (SecurityException e) {
+            // Android 12+ 上没给精确闹钟权限会走到这儿。
+        } catch (Exception e) {
+            // 个别 ROM 改过 AlarmManager，别让整个排程挂掉。
+        }
+
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending);
@@ -150,13 +171,24 @@ final class Reminders {
                 alarms.setExact(AlarmManager.RTC_WAKEUP, at, pending);
             }
         } catch (SecurityException e) {
-            // 系统没给精确闹钟权限时退回不精确，宁可晚几分钟也别不响。
+            // 连精确都不给，退回不精确。宁可晚几分钟也别不来。
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending);
             } else {
                 alarms.set(AlarmManager.RTC_WAKEUP, at, pending);
             }
         }
+    }
+
+    /** 状态栏那个闹钟图标点下去要能进 App。 */
+    private static PendingIntent openApp(Context context) {
+        Intent open = new Intent(context, MainActivity.class);
+        open.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        return PendingIntent.getActivity(context, NOTIFY_BASE + 555, open, flags);
     }
 
     // ---- 排查用：闹钟到底有没有响过 ----
@@ -188,7 +220,7 @@ final class Reminders {
         ensureChannel(context);
 
         long at = System.currentTimeMillis() + minutes * 60_000L;
-        setAlarm(alarms, testIntent(context), at);
+        setAlarm(alarms, context, testIntent(context), at);
         prefs(context).edit().putLong(KEY_TEST_DUE, at).putLong(KEY_TEST_FIRE, 0).apply();
         return "";
     }

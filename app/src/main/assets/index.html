@@ -1035,6 +1035,14 @@
         <div><div class="label">试一下</div><div class="desc">立刻发一条，看看长什么样</div></div>
         <button class="mini-btn right" id="st-preview">发一条</button>
       </div>
+      <div class="row">
+        <div>
+          <div class="label">一直开着</div>
+          <div class="desc">上面都试过还是不来，就开这个。通知栏会多一条常驻的，
+            写着「下次 21:00」，系统就不容易把提醒清掉了</div>
+        </div>
+        <button class="switch right" id="st-keepalive"></button>
+      </div>
     </div>
 
     <div class="section-title">标签</div>
@@ -1086,7 +1094,7 @@
         源码公开，许可 GPL-3.0。上面那句「不联网」你可以自己去代码里查证。
       </p>
       <div class="row" style="margin-top:8px">
-        <div class="label" style="font-size:14px;color:var(--ink-mute)">安心手记 0.5.0 · GPL-3.0</div>
+        <div class="label" style="font-size:14px;color:var(--ink-mute)">安心手记 0.5.1 · GPL-3.0</div>
       </div>
     </div>
   </section>
@@ -3024,7 +3032,18 @@
       var panel = document.getElementById("st-trouble-panel");
       panel.hidden = !panel.hidden;
       this.textContent = panel.hidden ? "提醒没来过？" : "收起来";
-      if (!panel.hidden) renderChecks();
+      if (!panel.hidden) {
+        renderChecks();
+        document.getElementById("st-keepalive")
+          .classList.toggle("on", !!safeCall("keepAliveOn", false));
+      }
+    };
+
+    document.getElementById("st-keepalive").onclick = function () {
+      if (!native) { toast("装到手机上才有用"); return; }
+      var on = !this.classList.contains("on");
+      this.classList.toggle("on", on);
+      safeCall("setKeepAlive", null, on);
     };
 
     document.getElementById("st-preview").onclick = function () {
