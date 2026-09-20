@@ -1,0 +1,18 @@
+# 构建产物
+build/
+.gradle/
+*.apk
+*.aab
+
+# local.properties 里是这台机器的 SDK 路径，换台机器就是错的
+local.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# 签名密钥绝对不进仓库
+*.jks
+*.keystore
+keystore.properties
