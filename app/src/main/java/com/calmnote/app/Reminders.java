@@ -36,6 +36,7 @@ final class Reminders {
     private static final String KEY_FIRE_SLOT = "last-fire-slot";
     private static final String KEY_TEST_DUE = "test-due";
     private static final String KEY_TEST_FIRE = "test-fire";
+    private static final String KEY_ARMED_AT = "armed-at";
 
     private Reminders() {
     }
@@ -108,9 +109,21 @@ final class Reminders {
             schedule(alarms, context, slot, slotKey(hm[0], hm[1]), nextTriggerAt(slot));
         }
 
-        prefs(context).edit()
-            .putString(KEY_SCHEDULED, android.text.TextUtils.join(",", slots))
-            .apply();
+        // 记下「从什么时候开始有提醒在排」。界面要靠它判断某一顿是不是该到却没到：
+        // 提醒打开之前就过去的那些顿，本来就没排过闹钟，不能算没送到。
+        SharedPreferences.Editor edit = prefs(context).edit()
+            .putString(KEY_SCHEDULED, android.text.TextUtils.join(",", slots));
+        if (slots.isEmpty()) {
+            edit.putLong(KEY_ARMED_AT, 0);
+        } else if (prefs(context).getLong(KEY_ARMED_AT, 0) == 0) {
+            edit.putLong(KEY_ARMED_AT, System.currentTimeMillis());
+        }
+        edit.apply();
+    }
+
+    /** 提醒是什么时候开始排上的；0 表示现在没在排。 */
+    static long armedAt(Context context) {
+        return prefs(context).getLong(KEY_ARMED_AT, 0);
     }
 
     private static List<String> previouslyScheduled(Context context) {

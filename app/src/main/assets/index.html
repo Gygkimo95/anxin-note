@@ -669,6 +669,9 @@
     border-bottom: 1px solid var(--line);
   }
   .row:last-child { border-bottom: none; }
+  /* 后面跟着一个空容器时也要收掉分隔线。
+     :last-child 管不到这种情况，:has() 在老 WebView 上不能指望，所以由 JS 加类。 */
+  .row.flush { border-bottom: none; }
   .row .label { font-size: 16px; }
   .row .desc { font-size: 13px; color: var(--ink-mute); margin-top: 2px; }
   .row .right { margin-left: auto; }
@@ -738,6 +741,35 @@
   }
   .check-item:last-child { border-bottom: none; }
   .check-item .dot { font-size: 14px; line-height: 1.6; }
+  /* 「提醒没来过？」：一行小字，不是按钮样子。
+     排查是少数情况才用的东西，不该在版面上占按钮的分量。 */
+  .quiet-link {
+    display: block;
+    margin: 10px auto 0;
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--ink-mute);
+    text-decoration: underline;
+    text-decoration-color: var(--line);
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+
+  /* App 自己发现问题时才出现的那条。用 ochre 不用红色。 */
+  .alert {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .alert .t { font-size: 15px; color: var(--ochre); }
+  .alert .d { font-size: 13px; color: var(--ink-mute); margin-top: 3px; line-height: 1.5; }
+  .alert .body { flex: 1; }
+
   .check-item .dot.ok { color: var(--moss); }
   .check-item .dot.no { color: var(--ochre); }
   /* 查不出开没开的（比如自启动），用灰点，别装作出了问题。 */
@@ -985,13 +1017,19 @@
 
     <div class="section-title">提醒</div>
     <div class="card">
-      <div class="row">
+      <div class="row" id="st-remind-row">
         <div>
           <div class="label">到点提醒我</div>
-          <div class="desc">静静弹一条，不响。通知上可以直接点「吃了」</div>
+          <div class="desc" id="st-remind-desc">静静弹一条，不响</div>
         </div>
         <button class="switch right" id="st-remind"></button>
       </div>
+      <!-- 只有 App 自己发现问题时这里才有东西。没问题就是空的，
+           不该让人打开设置就面对一排自检。 -->
+      <div id="st-alert"></div>
+    </div>
+    <button class="quiet-link" id="st-trouble">提醒没来过？</button>
+    <div class="card" id="st-trouble-panel" hidden>
       <div id="st-checks"></div>
       <div class="row">
         <div><div class="label">试一下</div><div class="desc">立刻发一条，看看长什么样</div></div>
@@ -2340,9 +2378,117 @@
   function renderSettings() {
     renderMedEditors();
     document.getElementById("st-remind").classList.toggle("on", !!state.remind);
+    renderRemindLine();
+    renderAlert();
     renderChecks();
     renderTagManager();
     renderBackupState();
+  }
+
+  /**
+   * 开关底下那行字。「下次什么时候提醒」放在这儿，不单独占一行：
+   * 它是用户唯一真正想知道的状态，而为它开一整行自检就太重了。
+   */
+  function renderRemindLine() {
+    var box = document.getElementById("st-remind-desc");
+    if (!state.remind) { box.textContent = "打开之后到点会静静弹一条，不响"; return; }
+
+    var at = nextReminderStamp();
+    if (!at) { box.textContent = "静静弹一条，不响。药还没设好时间"; return; }
+    var when = new Date(at);
+    var day = dayKey(when) === dayKey(new Date()) ? "今天" : "明天";
+    box.textContent = "下次 " + day + " " + hm(when) + " · 静静弹一条，不响";
+  }
+
+  /**
+   * 只在 App 自己拿到证据的时候才出声。
+   *
+   * 别的 App 确认一下通知权限就完事，是因为它们晚到一条消息没有后果，
+   * 而且大多被厂商白名单了。这个 App 漏一顿药有后果，所以可靠性是真问题——
+   * 但解法是 App 自己发现并说出来，不是把一排自检摊给用户，让他每次打开设置
+   * 都被提醒「这东西很脆弱，修它是你的事」。那本身就是第二种压力。
+   */
+  function renderAlert() {
+    var box = document.getElementById("st-alert");
+    var row = document.getElementById("st-remind-row");
+    box.innerHTML = "";
+    row.classList.add("flush");
+    if (!state.remind || !native) return;
+
+    var problem = firstProblem();
+    if (!problem) return;
+
+    row.classList.remove("flush");
+    box.innerHTML = '<div class="alert"><div class="dot no">○</div>' +
+      '<div class="body"><div class="t">' + escape(problem.title) + "</div>" +
+      '<div class="d">' + escape(problem.desc) + "</div></div>" +
+      '<button class="mini-btn" id="st-alert-fix">' + escape(problem.label) + "</button></div>";
+    document.getElementById("st-alert-fix").onclick = problem.fix;
+  }
+
+  /** 按「能不能确定」和「多要紧」排：确定的硬问题在前，靠推断的在后。 */
+  function firstProblem() {
+    if (!safeCall("notificationsEnabled", true)) {
+      return {
+        title: "通知被系统关着",
+        desc: "到点这条发不出来。开一下就好。",
+        label: "去开",
+        fix: function () { safeCall("requestNotifications"); }
+      };
+    }
+
+    var missed = missedSlot();
+    if (missed) {
+      return {
+        title: missed + " 那条没送到",
+        desc: "这台手机的系统把它拦在到点之前了。多半是「自启动」或者「后台耗电」" +
+          "这两个开关没开，开完可以在下面测一次确认。",
+        label: "去开",
+        fix: function () { safeCall("openAutoStartSettings"); }
+      };
+    }
+
+    if (!safeCall("canScheduleExact", true)) {
+      return {
+        title: "现在只能大概时间提醒",
+        desc: "可能晚十几分钟。",
+        label: "去开",
+        fix: function () { safeCall("openExactAlarmSettings"); }
+      };
+    }
+    return null;
+  }
+
+  /**
+   * 今天有没有哪一顿本该提醒却没送到。
+   *
+   * 靠的是原生侧记的两个时间：提醒从什么时候开始排上的（armedAt），
+   * 以及最后一次定时真的递到 App 的时间（lastFireAt）。
+   * 打开提醒之前就过去的那些顿不算——那时候压根没排过闹钟。
+   */
+  function missedSlot() {
+    var armed = parseInt(safeCall("armedAt", "0"), 10) || 0;
+    if (!armed) return null;
+    var last = parseInt(safeCall("lastFireAt", "0"), 10) || 0;
+    var now = Date.now();
+
+    var latest = null;
+    slotsOn(dayKey(new Date())).forEach(function (slot) {
+      if (!slot.time) return;
+      var at = atToday(slot.time);
+      // 留 10 分钟宽限：系统晚几分钟送到是正常的，别抢在它前面报错。
+      if (now - at < 10 * 60000) return;
+      if (at < armed + 5 * 60000) return;
+      if (last >= at) return;
+      if (!latest || at > latest.at) latest = { at: at, time: slot.time };
+    });
+    return latest && latest.time;
+  }
+
+  function atToday(hhmm) {
+    var now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate(),
+      +hhmm.slice(0, 2), +hhmm.slice(3, 5), 0, 0).getTime();
   }
 
   function renderBackupState() {
@@ -2561,7 +2707,11 @@
 
   function renderChecks() {
     var box = document.getElementById("st-checks");
-    if (!state.remind) { box.innerHTML = ""; return; }
+    if (!state.remind) {
+      box.innerHTML = '<p class="hint" style="margin:0 0 4px">' +
+        "提醒还没打开。打开上面那个开关，这里才有东西可查。</p>";
+      return;
+    }
 
     var items = [];
 
@@ -2600,10 +2750,8 @@
       });
     }
 
-    // 最要紧的一条：把「下次什么时候响」直接说出来。
-    // 不然刚打开提醒却等到明天才响，看着就像坏了。
-    items.push(nextReminderItem());
-
+    // 「下次什么时候提醒」不在这儿了，它在开关底下那行字里。
+    // 那是用户唯一真想知道的状态，不该藏在排查面板后面。
     if (native) items.push(alarmProofItem());
 
     var html = "";
@@ -2713,46 +2861,29 @@
     };
   }
 
-  function nextReminderItem() {
+  /** 下次提醒的时间戳；0 表示排不上（没设时间，或者原生侧没排）。 */
+  function nextReminderStamp() {
+    var times = todayTimes();
+    if (!times.length) return 0;
+    if (native) return parseInt(safeCall("nextReminderAt", "0"), 10) || 0;
+
+    // 浏览器预览用的兜底：今天还没过去的最早一个，都过了就是明天第一顿。
+    var now = new Date();
+    for (var i = 0; i < times.length; i++) {
+      var at = atToday(times[i]);
+      if (at > now.getTime()) return at;
+    }
+    var tomorrow = shiftDays(now, 1);
+    return new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(),
+      +times[0].slice(0, 2), +times[0].slice(3, 5), 0, 0).getTime();
+  }
+
+  function todayTimes() {
     var times = [];
     itemsOn(dayKey(new Date())).forEach(function (item) {
       if (item.at && times.indexOf(item.at) === -1) times.push(item.at);
     });
-    times.sort();
-
-    if (!times.length) {
-      return { ok: false, title: "下次提醒", desc: "药还没设好时间，排不上提醒", action: null };
-    }
-
-    var at = 0;
-    if (native) {
-      at = parseInt(safeCall("nextReminderAt", "0"), 10) || 0;
-    } else {
-      var now = new Date();
-      for (var i = 0; i < times.length && !at; i++) {
-        var d = new Date(now.getFullYear(), now.getMonth(), now.getDate(),
-          +times[i].slice(0, 2), +times[i].slice(3, 5), 0, 0);
-        if (d.getTime() > now.getTime()) at = d.getTime();
-      }
-      if (!at) {
-        var t = times[0];
-        var tomorrow = shiftDays(now, 1);
-        at = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(),
-          +t.slice(0, 2), +t.slice(3, 5), 0, 0).getTime();
-      }
-    }
-
-    if (!at) {
-      return { ok: false, title: "下次提醒", desc: "还没排上，检查上面几项", action: null };
-    }
-    var when = new Date(at);
-    var label = (dayKey(when) === dayKey(new Date()) ? "今天 " : "明天 ") + hm(when);
-    return {
-      ok: true,
-      title: "下次提醒",
-      desc: label + (times.length > 1 ? "（每天 " + times.join("、") + " 各一次）" : ""),
-      action: null
-    };
+    return times.sort();
   }
 
   function renderTagManager() {
@@ -2884,7 +3015,16 @@
       if (state.remind && native && !safeCall("notificationsEnabled", true)) {
         safeCall("requestNotifications");
       }
+      renderRemindLine();
+      renderAlert();
       renderChecks();
+    };
+
+    document.getElementById("st-trouble").onclick = function () {
+      var panel = document.getElementById("st-trouble-panel");
+      panel.hidden = !panel.hidden;
+      this.textContent = panel.hidden ? "提醒没来过？" : "收起来";
+      if (!panel.hidden) renderChecks();
     };
 
     document.getElementById("st-preview").onclick = function () {

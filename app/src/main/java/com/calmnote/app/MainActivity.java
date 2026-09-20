@@ -391,6 +391,12 @@ public class MainActivity extends Activity {
             return Reminders.lastFireSlot(MainActivity.this);
         }
 
+        /** 提醒从什么时候开始排上的；界面用它排除「打开提醒之前就过去的那些顿」。 */
+        @JavascriptInterface
+        public String armedAt() {
+            return String.valueOf(Reminders.armedAt(MainActivity.this));
+        }
+
         /** 排查用的闹钟：预定时间 和 实际响的时间，两个都给界面，好算差了多久。 */
         @JavascriptInterface
         public String testDueAt() {
