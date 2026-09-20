@@ -2644,25 +2644,41 @@
     var fired = parseInt(safeCall("testFiredAt", "0"), 10) || 0;
     var now = Date.now();
 
-    // 排查那条还没到点，先显示它，比历史记录更要紧。
-    if (due && !fired && due > now - 6 * 60000) {
-      var left = Math.max(0, Math.round((due - now) / 1000));
-      return {
-        state: "unknown",
-        title: "排查中",
-        desc: left > 0
-          ? "预定 " + hm(new Date(due)) + " 弹，还有 " + left +
-            " 秒。现在可以把 App 划掉、锁屏，等它"
-          : "该弹了。弹出来就说明没问题；过一会儿还没动静，就是被系统拦了",
-        action: ["刷新", function () { renderChecks(); }]
-      };
-    }
-
     var test = ["测一下", function () {
       var err = safeCall("scheduleTestAlarm", "", 2);
       if (err) { safeCall("toast", null, err); return; }
       renderChecks();
     }];
+
+    // 排查那条还没到点。
+    // 这里千万别叫人「把 App 划掉」再等：在 vivo、小米这些 ROM 上，
+    // 手动划掉等于强行停止，排好的提醒会跟着一起被清掉——那是最狠的一档条件，
+    // 拿它当第一次测试，只会让人以为 App 坏了。先测正常情况：回桌面、锁屏。
+    if (due && !fired && due > now) {
+      var left = Math.round((due - now) / 1000);
+      return {
+        state: "unknown",
+        title: "排查中",
+        desc: "预定 " + hm(new Date(due)) + " 弹，还有 " + left +
+          " 秒。回桌面、锁屏等着就行，别划掉 App",
+        action: ["刷新", function () { renderChecks(); }]
+      };
+    }
+
+    // 到点了还没弹 —— 最有信息量的状态，直接说该去开什么，
+    // 别让它悄悄退回「还没记录到提醒弹出过」，那样就把这次排查的结果丢了。
+    if (due && !fired && now - due < 60 * 60000) {
+      return {
+        ok: false,
+        title: "排查那条没弹出来",
+        desc: "系统在到点之前就把它拦住了。先按上面那条开「自启动」，" +
+          "再去 电池 → 后台耗电管理 设成不受限，然后重测。" +
+          "刚才要是把 App 划掉了，那一次不算——别划，只锁屏",
+        // 这里给「再测」而不是「去开」：自启动那条就在上面，自己带按钮；
+        // 而测完失败的人下一步一定是想再测一次，按钮得留给他。
+        action: ["再测", test[1]]
+      };
+    }
 
     if (due && fired && fired >= due - 60000) {
       var lateSec = Math.round((fired - due) / 1000);
