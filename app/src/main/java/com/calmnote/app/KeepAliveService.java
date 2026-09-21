@@ -7,7 +7,6 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.IBinder;
 
@@ -15,13 +14,14 @@ import java.util.Calendar;
 import java.util.List;
 
 /**
- * 最后一道：常驻前台服务，把进程钉在内存里。
+ * 常驻前台服务，把进程钉在内存里。
  *
  * 为什么需要它：有些 ROM（vivo、部分小米）连 setAlarmClock 都会在清后台时一起掐掉。
  * 闹钟活不过强杀，这一点代码里解决不了——除非进程别死。前台服务是安卓唯一
  * 允许长期存活的方式，代价是通知栏里一直挂一条。
  *
- * 所以它是**可选的**，默认关。不该为了少数机型让所有人多一条常驻通知。
+ * 只要提醒已开启且有有效时间，它就自动运行。用户既然开启了提醒，就不该再知道
+ * “保活”这种实现细节，更不该因为漏开一个排查开关而收不到提醒。
  *
  * 那条常驻通知顺便当了「一眼就看到」的入口：它写的是「下次 21:00 · 舍曲林」，
  * 正好是首页最想告诉用户的那句话，不用打开 App 就能看见。
@@ -30,27 +30,22 @@ public class KeepAliveService extends Service {
 
     static final String CHANNEL_ID = "keep-alive";
     private static final int NOTIFY_ID = 30001;
-    private static final String PREFS = "keep-alive-state";
-    private static final String KEY_ON = "on";
 
     static boolean enabled(Context context) {
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getBoolean(KEY_ON, false);
+        return Store.remindEnabled(context) && !Reminders.activeSlots(context).isEmpty();
     }
 
-    static void setEnabled(Context context, boolean on) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putBoolean(KEY_ON, on).apply();
-        if (on) {
+    /** 提醒状态或药物时间变化后同步服务，不让可靠性依赖一个额外开关。 */
+    static void sync(Context context) {
+        if (enabled(context)) {
             start(context);
         } else {
             context.stopService(new Intent(context, KeepAliveService.class));
         }
     }
 
-    /** 开着的话就（重新）拉起来；顺便用来刷新那条通知的文字。 */
-    static void start(Context context) {
-        if (!enabled(context)) return;
+    /** 启动或刷新常驻通知。调用前由 sync 判断当前是否确实需要运行。 */
+    private static void start(Context context) {
         Intent intent = new Intent(context, KeepAliveService.class);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

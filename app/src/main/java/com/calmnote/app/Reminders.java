@@ -119,6 +119,7 @@ final class Reminders {
             edit.putLong(KEY_ARMED_AT, System.currentTimeMillis());
         }
         edit.apply();
+        KeepAliveService.sync(context);
     }
 
     /** 提醒是什么时候开始排上的；0 表示现在没在排。 */

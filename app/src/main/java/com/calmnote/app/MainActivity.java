@@ -66,7 +66,6 @@ public class MainActivity extends Activity {
 
         Reminders.ensureChannel(this);
         Reminders.rescheduleAll(this);
-        KeepAliveService.start(this);
     }
 
     @Override
@@ -74,8 +73,6 @@ public class MainActivity extends Activity {
         super.onResume();
         // 通知上点过「吃了」的话，数据在原生侧变了，回到前台要重新读一遍。
         Reminders.rescheduleAll(this);
-        // 在前台，这里拉服务不受后台启动限制；顺便把那条常驻通知的「下次」刷新。
-        KeepAliveService.start(this);
         reloadWeb();
         Backups.backup(this, false);
     }
@@ -83,6 +80,11 @@ public class MainActivity extends Activity {
     private void reloadWeb() {
         if (webView == null) return;
         webView.evaluateJavascript("window.__reloadFromNative && window.__reloadFromNative();", null);
+    }
+
+    private void finishRestoreInWeb() {
+        if (webView == null) return;
+        webView.evaluateJavascript("window.__restoreCompleted && window.__restoreCompleted();", null);
     }
 
     @Override
@@ -161,9 +163,12 @@ public class MainActivity extends Activity {
         // 覆盖之前先把当前状态存成一份备份，免得恢复错文件又丢一次。
         Backups.backup(this, true);
         Store.migrate(root);
-        Store.write(this, root.toString());
+        if (!Store.write(this, root.toString())) {
+            toast("恢复失败，原来的记录没有改动");
+            return;
+        }
         Reminders.rescheduleAll(this);
-        reloadWeb();
+        finishRestoreInWeb();
         toast("恢复好了");
     }
 
@@ -392,20 +397,6 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public String lastFireSlot() {
             return Reminders.lastFireSlot(MainActivity.this);
-        }
-
-        @JavascriptInterface
-        public boolean keepAliveOn() {
-            return KeepAliveService.enabled(MainActivity.this);
-        }
-
-        /** 常驻前台服务开关。只在排查面板里露出，默认关。 */
-        @JavascriptInterface
-        public void setKeepAlive(boolean on) {
-            KeepAliveService.setEnabled(MainActivity.this, on);
-            MainActivity.this.toast(on
-                ? "通知栏会多一条常驻的，它在帮你把提醒钉住"
-                : "已经关掉，常驻通知会消失");
         }
 
         /** 提醒从什么时候开始排上的；界面用它排除「打开提醒之前就过去的那些顿」。 */

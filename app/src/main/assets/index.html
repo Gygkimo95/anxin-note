@@ -732,29 +732,11 @@
     padding: 2px 4px;
   }
 
-  .check-item {
+  .backup-actions {
     display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    padding: 12px 0;
-    border-bottom: 1px solid var(--line);
-  }
-  .check-item:last-child { border-bottom: none; }
-  .check-item .dot { font-size: 14px; line-height: 1.6; }
-  /* 「提醒没来过？」：一行小字，不是按钮样子。
-     排查是少数情况才用的东西，不该在版面上占按钮的分量。 */
-  .quiet-link {
-    display: block;
-    margin: 10px auto 0;
-    border: none;
-    background: none;
-    font-family: inherit;
-    font-size: 14px;
-    color: var(--ink-mute);
-    text-decoration: underline;
-    text-decoration-color: var(--line);
-    padding: 6px 10px;
-    cursor: pointer;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
   }
 
   /* App 自己发现问题时才出现的那条。用 ochre 不用红色。 */
@@ -873,6 +855,7 @@
       这里只帮你记住吃没吃，不给用药建议。漏了要不要补、剂量怎么调，都按医生说的来。
     </p>
     <button class="btn" id="su-go">好了</button>
+    <button class="btn ghost" id="su-restore">已有备份？从备份恢复</button>
   </section>
 
   <!-- ========== 今天 ========== -->
@@ -1028,22 +1011,6 @@
            不该让人打开设置就面对一排自检。 -->
       <div id="st-alert"></div>
     </div>
-    <button class="quiet-link" id="st-trouble">提醒没来过？</button>
-    <div class="card" id="st-trouble-panel" hidden>
-      <div id="st-checks"></div>
-      <div class="row">
-        <div><div class="label">试一下</div><div class="desc">立刻发一条，看看长什么样</div></div>
-        <button class="mini-btn right" id="st-preview">发一条</button>
-      </div>
-      <div class="row">
-        <div>
-          <div class="label">一直开着</div>
-          <div class="desc">上面都试过还是不来，就开这个。通知栏会多一条常驻的，
-            写着「下次 21:00」，系统就不容易把提醒清掉了</div>
-        </div>
-        <button class="switch right" id="st-keepalive"></button>
-      </div>
-    </div>
 
     <div class="section-title">标签</div>
     <div class="card">
@@ -1058,43 +1025,31 @@
     <div class="card">
       <div class="row">
         <div>
-          <div class="label">自动备份</div>
+          <div class="label">记录备份</div>
           <div class="desc" id="st-backup-state">—</div>
         </div>
-        <button class="mini-btn right" id="st-backup-now">立即备份</button>
+        <button class="mini-btn right" id="st-backup-manage">管理</button>
       </div>
-      <div class="row">
-        <div>
-          <div class="label">从备份恢复</div>
-          <div class="desc">选一个备份文件，覆盖现在的记录</div>
+      <div id="st-backup-more" hidden>
+        <p class="hint" style="margin:14px 0 0">
+          自动保存在手机的 <b id="st-backup-where">下载/安心手记</b>，卸载应用也不会删除。
+        </p>
+        <div class="backup-actions">
+          <button class="mini-btn" id="st-backup-now">立即备份</button>
+          <button class="mini-btn" id="st-restore">恢复备份</button>
+          <button class="mini-btn" id="st-export">导出副本</button>
         </div>
-        <button class="mini-btn right" id="st-restore">恢复</button>
+        <div id="st-restore-confirm"></div>
       </div>
-      <div id="st-restore-confirm"></div>
-      <div class="row">
-        <div>
-          <div class="label">另存一份</div>
-          <div class="desc">带日期的副本，自己收着</div>
-        </div>
-        <button class="mini-btn right" id="st-export">导出</button>
-      </div>
-      <p class="hint" style="margin:14px 0 0">
-        备份存在手机的 <b id="st-backup-where">下载/安心手记</b> 文件夹里，
-        文件名 <b>安心手记-备份.json</b>（还留着上一次的一份）。
-        卸载 App 也不会跟着删掉。<br>
-        换手机或者重装之后，用「恢复」把它读回来。
-      </p>
     </div>
 
     <div class="section-title">关于</div>
     <div class="card">
       <p class="hint" style="margin:0">
-        所有记录只存在这台手机上。这个 App 没有联网权限，没有账号，不会把任何东西发出去。<br><br>
-        它不做任何医疗判断。漏服怎么处理、剂量要不要调，都听医生的。<br><br>
-        源码公开，许可 GPL-3.0。上面那句「不联网」你可以自己去代码里查证。
+        记录只存在这台手机，不联网、不上传。源码公开，任何人都可以检查。
       </p>
       <div class="row" style="margin-top:8px">
-        <div class="label" style="font-size:14px;color:var(--ink-mute)">安心手记 0.5.1 · GPL-3.0</div>
+        <div class="label" style="font-size:14px;color:var(--ink-mute)">安心手记 0.5.3</div>
       </div>
     </div>
   </section>
@@ -1112,8 +1067,10 @@
   "use strict";
 
   var LOCAL_KEY = "anxin.data.v1";
-  var SEED_BODY = ["心慌", "胸闷", "喘不上气", "手抖", "出汗", "头晕", "胃里不舒服", "肩颈发紧", "坐不住", "脑子停不下来"];
-  var SEED_METHODS = ["深呼吸", "出门走走", "喝点水", "找人说说", "离开现场", "洗把脸", "写下来", "听点东西"];
+  var SEED_BODY = ["心慌", "胸闷", "头晕", "胃里不舒服"];
+  var SEED_METHODS = ["深呼吸", "出门走走", "找人说说", "离开现场"];
+  var LEGACY_SEED_BODY = ["心慌", "胸闷", "喘不上气", "手抖", "出汗", "头晕", "胃里不舒服", "肩颈发紧", "坐不住", "脑子停不下来"];
+  var LEGACY_SEED_METHODS = ["深呼吸", "出门走走", "喝点水", "找人说说", "离开现场", "洗把脸", "写下来", "听点东西"];
   var WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
   var native = window.Native || null;
@@ -1189,7 +1146,7 @@
 
   function blank() {
     return {
-      version: 3,
+      version: 4,
       onboarded: false,
       meds: [],
       remind: true,
@@ -1204,6 +1161,7 @@
   function migrate(data) {
     if (data.version < 2 || !data.meds) toV2(data);
     if (data.version < 3) toV3(data);
+    if (data.version < 4) toV4(data);
     return data;
   }
 
@@ -1260,6 +1218,25 @@
     data.version = 3;
   }
 
+  /** v4：默认标签收敛；历史用过的标签和用户自己加的标签一律保留。 */
+  function toV4(data) {
+    var usedBody = {};
+    var usedMethods = {};
+    (data.stress || []).forEach(function (record) {
+      (record.body || []).forEach(function (tag) { usedBody[tag] = true; });
+      (record.methods || []).forEach(function (tag) { usedMethods[tag] = true; });
+    });
+    data.bodyTags = (data.bodyTags || SEED_BODY).filter(function (tag) {
+      return SEED_BODY.indexOf(tag) !== -1 ||
+        LEGACY_SEED_BODY.indexOf(tag) === -1 || usedBody[tag];
+    });
+    data.methods = (data.methods || SEED_METHODS).filter(function (tag) {
+      return SEED_METHODS.indexOf(tag) !== -1 ||
+        LEGACY_SEED_METHODS.indexOf(tag) === -1 || usedMethods[tag];
+    });
+    data.version = 4;
+  }
+
   function load() {
     var raw = "";
     try {
@@ -1276,7 +1253,7 @@
       if (!data) loadBroken = true;
     }
     if (!data || typeof data !== "object") data = blank();
-    var wasOld = data.version !== 3 || !data.meds;
+    var wasOld = data.version !== 4 || !data.meds;
     data = migrate(data);
     if (wasOld) needsPersist = true;
 
@@ -2388,7 +2365,6 @@
     document.getElementById("st-remind").classList.toggle("on", !!state.remind);
     renderRemindLine();
     renderAlert();
-    renderChecks();
     renderTagManager();
     renderBackupState();
   }
@@ -2501,21 +2477,21 @@
 
   function renderBackupState() {
     var box = document.getElementById("st-backup-state");
-    if (!native) { box.textContent = "装到手机上才会自动备份"; return; }
+    if (!native) { box.textContent = "安装到手机后自动备份"; return; }
 
     // 路径放在卡片下面那段说明里，那儿有整行宽度，不会断在词中间。
     var where = safeCall("backupLocation", "下载/安心手记");
     document.getElementById("st-backup-where").textContent = where;
 
     var at = safeCall("lastBackupAt", 0);
-    if (!at) { box.textContent = "还没备过，点右边备一次"; return; }
+    if (!at) { box.textContent = "会自动保存在手机里"; return; }
 
     var when = new Date(Number(at));
     var stamp = dayKey(when) === dayKey(new Date())
       ? "今天 " + pad(when.getHours()) + ":" + pad(when.getMinutes())
       : when.getMonth() + 1 + "月" + when.getDate() + "日 " +
         pad(when.getHours()) + ":" + pad(when.getMinutes());
-    box.textContent = "上次 " + stamp;
+    box.textContent = "自动备份 · 上次 " + stamp;
   }
 
   function renderMedEditors() {
@@ -2652,7 +2628,6 @@
       renderTimePick("tp-" + med.id + "-" + time.id, time.at, function (value) {
         time.at = value;
         save();
-        renderChecks();
       });
     });
 
@@ -2711,162 +2686,6 @@
       candidate = pad(hour) + ":" + last.slice(3, 5);
     }
     return candidate;
-  }
-
-  function renderChecks() {
-    var box = document.getElementById("st-checks");
-    if (!state.remind) {
-      box.innerHTML = '<p class="hint" style="margin:0 0 4px">' +
-        "提醒还没打开。打开上面那个开关，这里才有东西可查。</p>";
-      return;
-    }
-
-    var items = [];
-
-    if (native) {
-      var notifyOk = safeCall("notificationsEnabled", true);
-      items.push({
-        ok: notifyOk,
-        title: "通知权限",
-        desc: notifyOk ? "已经开着" : "没开的话到点不会响",
-        action: notifyOk ? null : ["去开", "requestNotifications"]
-      });
-
-      var exactOk = safeCall("canScheduleExact", true);
-      items.push({
-        ok: exactOk,
-        title: "准点提醒",
-        desc: exactOk ? "可以准点提醒" : "现在只能大概时间提醒，可能晚十几分钟",
-        action: exactOk ? null : ["去开", "openExactAlarmSettings"]
-      });
-
-      var batteryOk = safeCall("batteryUnrestricted", true);
-      items.push({
-        ok: batteryOk,
-        title: "后台不受限",
-        desc: batteryOk ? "系统不会掐掉提醒" : "国产系统常会在后台掐掉提醒，建议加进白名单",
-        action: batteryOk ? null : ["去设置", "openBatterySettings"]
-      });
-
-      // 自启动是「到点没响」最常见的原因，但系统不给任何接口查，
-      // 所以这条永远是灰点 + 一个入口，不谎报状态。
-      items.push({
-        state: "unknown",
-        title: "自启动",
-        desc: "查不到开没开。清了后台或重启过之后还是不弹，多半是这项没开",
-        action: ["去开", "openAutoStartSettings"]
-      });
-    }
-
-    // 「下次什么时候提醒」不在这儿了，它在开关底下那行字里。
-    // 那是用户唯一真想知道的状态，不该藏在排查面板后面。
-    if (native) items.push(alarmProofItem());
-
-    var html = "";
-    for (var i = 0; i < items.length; i++) {
-      var item = items[i];
-      var st = item.state || (item.ok ? "ok" : "no");
-      html += '<div class="check-item"><div class="dot ' + st + '">' +
-        (st === "ok" ? "●" : "○") + "</div>" +
-        '<div class="body"><div class="t">' + escape(item.title) + "</div>" +
-        '<div class="d">' + escape(item.desc) + "</div></div>";
-      if (item.action) {
-        html += '<button class="mini-btn" data-idx="' + i + '">' +
-          escape(item.action[0]) + "</button>";
-      }
-      html += "</div>";
-    }
-    box.innerHTML = html;
-
-    var buttons = box.querySelectorAll("[data-idx]");
-    for (var j = 0; j < buttons.length; j++) {
-      buttons[j].onclick = function () {
-        var action = items[+this.getAttribute("data-idx")].action;
-        if (typeof action[1] === "function") action[1]();
-        else safeCall(action[1]);
-      };
-    }
-  }
-
-  /**
-   * 「到点到底弹出来过没有」——排查时唯一算得上证据的一条。
-   * 代码里看不出 ROM 有没有把定时掐掉，只能记下每次真到了的时间给人对。
-   *
-   * 措辞上一律不用「闹钟」「响」：这条提醒是静音横幅，不会响，
-   * 写成闹钟会让人以为装了个会叫的东西。
-   */
-  function alarmProofItem() {
-    var due = parseInt(safeCall("testDueAt", "0"), 10) || 0;
-    var fired = parseInt(safeCall("testFiredAt", "0"), 10) || 0;
-    var now = Date.now();
-
-    var test = ["测一下", function () {
-      var err = safeCall("scheduleTestAlarm", "", 2);
-      if (err) { safeCall("toast", null, err); return; }
-      renderChecks();
-    }];
-
-    // 排查那条还没到点。
-    // 这里千万别叫人「把 App 划掉」再等：在 vivo、小米这些 ROM 上，
-    // 手动划掉等于强行停止，排好的提醒会跟着一起被清掉——那是最狠的一档条件，
-    // 拿它当第一次测试，只会让人以为 App 坏了。先测正常情况：回桌面、锁屏。
-    if (due && !fired && due > now) {
-      var left = Math.round((due - now) / 1000);
-      return {
-        state: "unknown",
-        title: "排查中",
-        desc: "预定 " + hm(new Date(due)) + " 弹，还有 " + left +
-          " 秒。回桌面、锁屏等着就行，别划掉 App",
-        action: ["刷新", function () { renderChecks(); }]
-      };
-    }
-
-    // 到点了还没弹 —— 最有信息量的状态，直接说该去开什么，
-    // 别让它悄悄退回「还没记录到提醒弹出过」，那样就把这次排查的结果丢了。
-    if (due && !fired && now - due < 60 * 60000) {
-      return {
-        ok: false,
-        title: "排查那条没弹出来",
-        desc: "系统在到点之前就把它拦住了。先按上面那条开「自启动」，" +
-          "再去 电池 → 后台耗电管理 设成不受限，然后重测。" +
-          "刚才要是把 App 划掉了，那一次不算——别划，只锁屏",
-        // 这里给「再测」而不是「去开」：自启动那条就在上面，自己带按钮；
-        // 而测完失败的人下一步一定是想再测一次，按钮得留给他。
-        action: ["再测", test[1]]
-      };
-    }
-
-    if (due && fired && fired >= due - 60000) {
-      var lateSec = Math.round((fired - due) / 1000);
-      return {
-        ok: true,
-        title: "提醒到过",
-        desc: "排查那条在 " + hm(new Date(fired)) + " 弹出来了" +
-          (lateSec > 90 ? "，比预定晚了 " + Math.round(lateSec / 60) + " 分钟" : "，很准"),
-        action: test
-      };
-    }
-
-    var last = parseInt(safeCall("lastFireAt", "0"), 10) || 0;
-    if (!last) {
-      return {
-        state: "unknown",
-        title: "提醒到过吗",
-        desc: "装上以来还没记录到提醒弹出过。点右边排查一次，两分钟见结果",
-        action: test
-      };
-    }
-
-    var when = new Date(last);
-    var slot = safeCall("lastFireSlot", "");
-    var same = dayKey(when) === dayKey(new Date());
-    return {
-      ok: true,
-      title: "提醒到过",
-      desc: "上次 " + (same ? "今天 " : (when.getMonth() + 1) + "月" + when.getDate() + "日 ") +
-        hm(when) + (slot ? "（" + slot + " 那顿）" : ""),
-      action: test
-    };
   }
 
   /** 下次提醒的时间戳；0 表示排不上（没设时间，或者原生侧没排）。 */
@@ -3001,6 +2820,11 @@
       show("home", true);
     };
 
+    document.getElementById("su-restore").onclick = function () {
+      if (!native) { toast("安装到手机后才能恢复"); return; }
+      safeCall("pickBackupToRestore", null);
+    };
+
     document.getElementById("st-add-med").onclick = function () {
       var today = dayKey(new Date());
       state.meds.push({
@@ -3025,31 +2849,12 @@
       }
       renderRemindLine();
       renderAlert();
-      renderChecks();
     };
 
-    document.getElementById("st-trouble").onclick = function () {
-      var panel = document.getElementById("st-trouble-panel");
-      panel.hidden = !panel.hidden;
-      this.textContent = panel.hidden ? "提醒没来过？" : "收起来";
-      if (!panel.hidden) {
-        renderChecks();
-        document.getElementById("st-keepalive")
-          .classList.toggle("on", !!safeCall("keepAliveOn", false));
-      }
-    };
-
-    document.getElementById("st-keepalive").onclick = function () {
-      if (!native) { toast("装到手机上才有用"); return; }
-      var on = !this.classList.contains("on");
-      this.classList.toggle("on", on);
-      safeCall("setKeepAlive", null, on);
-    };
-
-    document.getElementById("st-preview").onclick = function () {
-      if (!native) { toast("装到手机上才看得到通知"); return; }
-      var problem = safeCall("previewReminder", "");
-      toast(problem ? problem : "发出去了，看看通知栏");
+    document.getElementById("st-backup-manage").onclick = function () {
+      var more = document.getElementById("st-backup-more");
+      more.hidden = !more.hidden;
+      this.textContent = more.hidden ? "管理" : "收起";
     };
 
     document.getElementById("st-export").onclick = function () {
@@ -3096,7 +2901,16 @@
     if (current === "home") renderHome();
     if (current === "records") renderRecords();
     if (current === "day-edit") renderDayEdit();
-    if (current === "settings") renderChecks();
+  };
+
+  /** 备份恢复成功后要重读整份状态，并立即离开首次设置页。 */
+  window.__restoreCompleted = function () {
+    if (!native) return;
+    state = load();
+    state.onboarded = true;
+    save();
+    stack = [];
+    show("home", true);
   };
 
   window.__handleBack = function () {
