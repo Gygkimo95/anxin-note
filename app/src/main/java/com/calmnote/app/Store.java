@@ -22,7 +22,7 @@ import java.util.Locale;
  * 全部数据只存在应用私有目录的 data.json，不联网、不备份到云。
  * 原生侧持有它，是因为通知上点「吃了」时 WebView 通常没在运行。
  *
- * v3 结构：
+ * v4 结构：
  *   meds:  [{ id, name, dose, note, since, until,
  *             times: [{ id, at, since, until }] }]
  *   remind: bool
@@ -35,6 +35,16 @@ final class Store {
 
     private static final String FILE_NAME = "data.json";
     private static final Object LOCK = new Object();
+    private static final String[] BODY_PRESETS =
+        {"心慌", "胸闷", "头晕", "胃里不舒服"};
+    private static final String[] METHOD_PRESETS =
+        {"深呼吸", "出门走走", "找人说说", "离开现场"};
+    private static final String[] LEGACY_BODY_PRESETS =
+        {"心慌", "胸闷", "喘不上气", "手抖", "出汗", "头晕", "胃里不舒服",
+         "肩颈发紧", "坐不住", "脑子停不下来"};
+    private static final String[] LEGACY_METHOD_PRESETS =
+        {"深呼吸", "出门走走", "喝点水", "找人说说", "离开现场", "洗把脸",
+         "写下来", "听点东西"};
 
     private Store() {
     }
@@ -128,6 +138,10 @@ final class Store {
                 toV3(root);
                 changed = true;
             }
+            if (root.optInt("version", 1) < 4) {
+                toV4(root);
+                changed = true;
+            }
         } catch (Exception e) {
             // 迁移中途出错就别写回，宁可用旧结构跑着，也不能落一份半成品。
             return false;
@@ -211,6 +225,58 @@ final class Store {
             }
         }
         root.put("version", 3);
+    }
+
+    /** v4：精简默认标签，历史用过的和用户自建的标签都保留。 */
+    private static void toV4(JSONObject root) throws Exception {
+        List<String> usedBody = new ArrayList<>();
+        List<String> usedMethods = new ArrayList<>();
+        JSONArray stress = root.optJSONArray("stress");
+        for (int i = 0; stress != null && i < stress.length(); i++) {
+            JSONObject record = stress.optJSONObject(i);
+            if (record == null) continue;
+            collect(record.optJSONArray("body"), usedBody);
+            collect(record.optJSONArray("methods"), usedMethods);
+        }
+        root.put("bodyTags", compactPresets(
+            root.optJSONArray("bodyTags"), BODY_PRESETS, LEGACY_BODY_PRESETS, usedBody
+        ));
+        root.put("methods", compactPresets(
+            root.optJSONArray("methods"), METHOD_PRESETS, LEGACY_METHOD_PRESETS, usedMethods
+        ));
+        root.put("version", 4);
+    }
+
+    private static JSONArray compactPresets(
+        JSONArray current, String[] kept, String[] legacy, List<String> used
+    ) {
+        JSONArray result = new JSONArray();
+        if (current == null || current.length() == 0) {
+            for (String tag : kept) result.put(tag);
+            return result;
+        }
+        for (int i = 0; i < current.length(); i++) {
+            String tag = current.optString(i, "");
+            if (tag.isEmpty()) continue;
+            if (contains(kept, tag) || !contains(legacy, tag) || used.contains(tag)) {
+                result.put(tag);
+            }
+        }
+        return result;
+    }
+
+    private static void collect(JSONArray source, List<String> target) {
+        for (int i = 0; source != null && i < source.length(); i++) {
+            String tag = source.optString(i, "");
+            if (!tag.isEmpty() && !target.contains(tag)) target.add(tag);
+        }
+    }
+
+    private static boolean contains(String[] values, String target) {
+        for (String value : values) {
+            if (value.equals(target)) return true;
+        }
+        return false;
     }
 
     private static String earliestDoseDay(JSONObject root) {

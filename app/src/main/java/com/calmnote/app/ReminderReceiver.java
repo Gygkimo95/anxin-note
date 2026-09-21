@@ -34,7 +34,5 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         // 重启、对时、换时区、应用更新后闹钟都会丢，需要重新排。
         Reminders.rescheduleAll(context);
-        // 常驻服务开着的话，开机也要把它拉回来，否则重启之后这道保险就没了。
-        KeepAliveService.start(context);
     }
 }

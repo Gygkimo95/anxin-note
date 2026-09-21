@@ -7,8 +7,8 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- 可选的常驻前台服务：有些 ROM 连 setAlarmClock 都会在清后台时掐掉，
-         只有进程别死才拦得住。默认不开。 -->
+    <!-- 提醒开启时自动运行的前台服务：有些 ROM 连 setAlarmClock 都会在清后台时掐掉，
+         只有让进程保持存活才能保证关掉界面后仍按时提醒。 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -16,6 +16,8 @@
 
     <application
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
