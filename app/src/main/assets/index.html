@@ -715,13 +715,21 @@
   }
 
   .compact-select {
+    width: 148px;
+    min-height: 38px;
+    flex: 0 0 148px;
     border: 1px solid var(--line);
     background: #fff;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5l5-5' fill='none' stroke='%236f7969' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
     border-radius: 10px;
     padding: 8px 30px 8px 12px;
     font-size: 14px;
     font-family: inherit;
     color: var(--moss-deep);
+    text-align: center;
+    text-align-last: center;
   }
 
   .med-head {
@@ -1020,7 +1028,7 @@
       <div class="row" id="st-remind-lead-row">
         <div>
           <div class="label">提前提醒</div>
-          <div class="desc">所有服药时间共用</div>
+          <div class="desc">所有时间共用</div>
         </div>
         <select class="compact-select right" id="st-remind-lead">
           <option value="0">准时</option>
@@ -1072,7 +1080,7 @@
         记录只存在这台手机，不联网、不上传。源码公开，任何人都可以检查。
       </p>
       <div class="row" style="margin-top:8px">
-        <div class="label" style="font-size:14px;color:var(--ink-mute)">安心手记 0.5.4</div>
+        <div class="label" style="font-size:14px;color:var(--ink-mute)">安心手记 0.5.5</div>
       </div>
     </div>
   </section>
