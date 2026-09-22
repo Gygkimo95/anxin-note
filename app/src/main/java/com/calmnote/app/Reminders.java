@@ -26,6 +26,7 @@ final class Reminders {
     /** 0.5.0 之前那个会响会震的渠道，只留着为了删掉它。 */
     private static final String LOUD_CHANNEL_ID = "med-reminder";
     static final String EXTRA_SLOT = "slot";
+    static final String EXTRA_DOSE_DAY = "dose-day";
 
     private static final int ALARM_BASE = 40000;
     private static final int NOTIFY_BASE = 20000;
@@ -49,10 +50,13 @@ final class Reminders {
         return hour * 60 + minute;
     }
 
-    private static PendingIntent alarmIntent(Context context, String slot, int slotKey) {
+    private static PendingIntent alarmIntent(
+        Context context, String slot, int slotKey, String doseDay
+    ) {
         Intent intent = new Intent(context, ReminderReceiver.class);
         intent.setAction(ReminderReceiver.ACTION_FIRE);
         intent.putExtra(EXTRA_SLOT, slot);
+        intent.putExtra(EXTRA_DOSE_DAY, doseDay);
         // data 必须带上 slot，否则不同顿的 PendingIntent 会被当成同一个而互相覆盖。
         intent.setData(android.net.Uri.parse("anxin://slot/" + slot));
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
@@ -74,18 +78,37 @@ final class Reminders {
         return sorted;
     }
 
-    static long nextTriggerAt(String slot) {
-        int[] hm = Store.parseHm(slot);
-        if (hm == null) return 0;
-        Calendar next = Calendar.getInstance();
-        next.set(Calendar.HOUR_OF_DAY, hm[0]);
-        next.set(Calendar.MINUTE, hm[1]);
-        next.set(Calendar.SECOND, 0);
-        next.set(Calendar.MILLISECOND, 0);
-        if (next.getTimeInMillis() <= System.currentTimeMillis()) {
-            next.add(Calendar.DAY_OF_YEAR, 1);
+    private static final class Occurrence {
+        final long triggerAt;
+        final String doseDay;
+
+        Occurrence(long triggerAt, String doseDay) {
+            this.triggerAt = triggerAt;
+            this.doseDay = doseDay;
         }
-        return next.getTimeInMillis();
+    }
+
+    private static Occurrence nextOccurrence(String slot, int leadMinutes) {
+        int[] hm = Store.parseHm(slot);
+        if (hm == null) return new Occurrence(0, "");
+
+        Calendar dose = Calendar.getInstance();
+        dose.set(Calendar.HOUR_OF_DAY, hm[0]);
+        dose.set(Calendar.MINUTE, hm[1]);
+        dose.set(Calendar.SECOND, 0);
+        dose.set(Calendar.MILLISECOND, 0);
+
+        Calendar trigger = (Calendar) dose.clone();
+        trigger.add(Calendar.MINUTE, -Math.max(0, leadMinutes));
+        if (trigger.getTimeInMillis() <= System.currentTimeMillis()) {
+            dose.add(Calendar.DAY_OF_YEAR, 1);
+            trigger.add(Calendar.DAY_OF_YEAR, 1);
+        }
+        return new Occurrence(trigger.getTimeInMillis(), Store.dayKey(dose.getTime()));
+    }
+
+    static long nextTriggerAt(String slot, int leadMinutes) {
+        return nextOccurrence(slot, leadMinutes).triggerAt;
     }
 
     /** 把之前排过的全撤掉，再按当前的药重排。药改了、时间改了、关掉提醒都走这里。 */
@@ -96,17 +119,19 @@ final class Reminders {
         for (String old : previouslyScheduled(context)) {
             int[] hm = Store.parseHm(old);
             if (hm == null) continue;
-            alarms.cancel(alarmIntent(context, old, slotKey(hm[0], hm[1])));
+            alarms.cancel(alarmIntent(context, old, slotKey(hm[0], hm[1]), ""));
         }
 
         List<String> slots = Store.remindEnabled(context)
             ? activeSlots(context)
             : new ArrayList<String>();
+        int leadMinutes = Store.reminderLeadMinutes(context);
 
         for (String slot : slots) {
             int[] hm = Store.parseHm(slot);
             if (hm == null) continue;
-            schedule(alarms, context, slot, slotKey(hm[0], hm[1]), nextTriggerAt(slot));
+            Occurrence next = nextOccurrence(slot, leadMinutes);
+            schedule(alarms, context, slot, slotKey(hm[0], hm[1]), next);
         }
 
         // 记下「从什么时候开始有提醒在排」。界面要靠它判断某一顿是不是该到却没到：
@@ -138,9 +163,11 @@ final class Reminders {
     }
 
     private static void schedule(
-        AlarmManager alarms, Context context, String slot, int key, long at
+        AlarmManager alarms, Context context, String slot, int key, Occurrence next
     ) {
-        setAlarm(alarms, context, alarmIntent(context, slot, key), at);
+        setAlarm(
+            alarms, context, alarmIntent(context, slot, key, next.doseDay), next.triggerAt
+        );
     }
 
     /**
@@ -285,9 +312,10 @@ final class Reminders {
     /** 界面上要显示「下次提醒」，取所有顿里最早的那次。 */
     static long soonestTrigger(Context context) {
         if (!Store.remindEnabled(context)) return 0;
+        int leadMinutes = Store.reminderLeadMinutes(context);
         long soonest = 0;
         for (String slot : activeSlots(context)) {
-            long at = nextTriggerAt(slot);
+            long at = nextTriggerAt(slot, leadMinutes);
             if (at > 0 && (soonest == 0 || at < soonest)) soonest = at;
         }
         return soonest;
@@ -326,16 +354,17 @@ final class Reminders {
     }
 
     /** 这一顿里还没记的。全都记过了返回空，就不用再响。 */
-    private static List<Store.Item> pendingItems(Context context, String slot) {
-        String today = Store.todayKey();
+    private static List<Store.Item> pendingItems(
+        Context context, String slot, String doseDay
+    ) {
         JSONObject root = Store.readObject(context);
         JSONArray meds = root.optJSONArray("meds");
         if (meds == null) return new ArrayList<>();
         JSONObject doses = root.optJSONObject("doses");
-        JSONObject day = doses == null ? null : doses.optJSONObject(today);
+        JSONObject day = doses == null ? null : doses.optJSONObject(doseDay);
 
         List<Store.Item> result = new ArrayList<>();
-        for (Store.Item item : Store.itemsOn(meds, today)) {
+        for (Store.Item item : Store.itemsOn(meds, doseDay)) {
             if (!item.at().equals(slot)) continue;
             if (Store.hasDose(day, item.medId(), item.timeId())) continue;
             result.add(item);
@@ -343,7 +372,9 @@ final class Reminders {
         return result;
     }
 
-    static String notifySlot(Context context, String slot, boolean force) {
+    static String notifySlot(
+        Context context, String slot, String doseDay, boolean force
+    ) {
         ensureChannel(context);
         NotificationManager manager =
             (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -353,19 +384,15 @@ final class Reminders {
             return "通知权限没开，系统把它拦住了";
         }
 
-        List<Store.Item> pending = pendingItems(context, slot);
+        String targetDay = doseDay == null || doseDay.isEmpty()
+            ? Store.todayKey() : doseDay;
+        List<Store.Item> pending = pendingItems(context, slot, targetDay);
         if (pending.isEmpty() && !force) return "这一顿已经记过了，不用再提";
 
-        StringBuilder names = new StringBuilder();
-        for (Store.Item item : pending) {
-            String name = item.med.optString("name", "").trim();
-            if (name.isEmpty()) continue;
-            if (names.length() > 0) names.append("、");
-            names.append(name);
-            String dose = item.med.optString("dose", "").trim();
-            if (!dose.isEmpty() && pending.size() == 1) names.append(' ').append(dose);
-        }
-        String text = names.length() > 0 ? "到时间了 · " + names : "到时间了";
+        int leadMinutes = Store.reminderLeadMinutes(context);
+        String text = leadMinutes > 0
+            ? "还有 " + leadMinutes + " 分钟，记得按计划用药"
+            : "到时间了，记得按计划用药";
 
         int flags = PendingIntent.FLAG_UPDATE_CURRENT;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -382,6 +409,7 @@ final class Reminders {
         Intent taken = new Intent(context, DoseActionReceiver.class);
         taken.setAction(DoseActionReceiver.ACTION_TAKEN);
         taken.putExtra(EXTRA_SLOT, slot);
+        taken.putExtra(EXTRA_DOSE_DAY, targetDay);
         taken.setData(android.net.Uri.parse("anxin://taken/" + slot));
         PendingIntent takenPending =
             PendingIntent.getBroadcast(context, ALARM_BASE + 1000 + key, taken, flags);
@@ -393,7 +421,7 @@ final class Reminders {
             builder = new Notification.Builder(context);
         }
         builder.setSmallIcon(R.drawable.ic_notify)
-            .setContentTitle(pending.size() > 1 ? slot + " 这一顿" : "安心手记")
+            .setContentTitle("安心手记")
             .setContentText(text)
             .setAutoCancel(true)
             .setContentIntent(openPending)

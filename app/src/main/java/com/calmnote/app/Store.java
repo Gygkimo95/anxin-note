@@ -22,7 +22,7 @@ import java.util.Locale;
  * 全部数据只存在应用私有目录的 data.json，不联网、不备份到云。
  * 原生侧持有它，是因为通知上点「吃了」时 WebView 通常没在运行。
  *
- * v4 结构：
+ * v5 结构：
  *   meds:  [{ id, name, dose, note, since, until,
  *             times: [{ id, at, since, until }] }]
  *   remind: bool
@@ -50,7 +50,11 @@ final class Store {
     }
 
     static String todayKey() {
-        return new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+        return dayKey(new Date());
+    }
+
+    static String dayKey(Date date) {
+        return new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(date);
     }
 
     static String nowStamp() {
@@ -140,6 +144,10 @@ final class Store {
             }
             if (root.optInt("version", 1) < 4) {
                 toV4(root);
+                changed = true;
+            }
+            if (root.optInt("version", 1) < 5) {
+                toV5(root);
                 changed = true;
             }
         } catch (Exception e) {
@@ -247,6 +255,12 @@ final class Store {
         root.put("version", 4);
     }
 
+    /** v5：所有服药时间共用一个提前提醒分钟数；旧用户继续准时提醒。 */
+    private static void toV5(JSONObject root) throws Exception {
+        root.put("reminderLeadMin", 0);
+        root.put("version", 5);
+    }
+
     private static JSONArray compactPresets(
         JSONArray current, String[] kept, String[] legacy, List<String> used
     ) {
@@ -297,6 +311,11 @@ final class Store {
 
     static boolean remindEnabled(Context context) {
         return readObject(context).optBoolean("remind", false);
+    }
+
+    static int reminderLeadMinutes(Context context) {
+        int minutes = readObject(context).optInt("reminderLeadMin", 0);
+        return Math.max(0, Math.min(120, minutes));
     }
 
     /** 某天在吃的药：加进来之前、停掉之后的日子都不算。 */

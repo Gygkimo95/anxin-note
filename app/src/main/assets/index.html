@@ -714,6 +714,16 @@
     white-space: nowrap;
   }
 
+  .compact-select {
+    border: 1px solid var(--line);
+    background: #fff;
+    border-radius: 10px;
+    padding: 8px 30px 8px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--moss-deep);
+  }
+
   .med-head {
     display: flex;
     align-items: baseline;
@@ -1002,10 +1012,23 @@
     <div class="card">
       <div class="row" id="st-remind-row">
         <div>
-          <div class="label">到点提醒我</div>
+          <div class="label">用药提醒</div>
           <div class="desc" id="st-remind-desc">静静弹一条，不响</div>
         </div>
         <button class="switch right" id="st-remind"></button>
+      </div>
+      <div class="row" id="st-remind-lead-row">
+        <div>
+          <div class="label">提前提醒</div>
+          <div class="desc">所有服药时间共用</div>
+        </div>
+        <select class="compact-select right" id="st-remind-lead">
+          <option value="0">准时</option>
+          <option value="5">提前 5 分钟</option>
+          <option value="10">提前 10 分钟</option>
+          <option value="15">提前 15 分钟</option>
+          <option value="30">提前 30 分钟</option>
+        </select>
       </div>
       <!-- 只有 App 自己发现问题时这里才有东西。没问题就是空的，
            不该让人打开设置就面对一排自检。 -->
@@ -1049,7 +1072,7 @@
         记录只存在这台手机，不联网、不上传。源码公开，任何人都可以检查。
       </p>
       <div class="row" style="margin-top:8px">
-        <div class="label" style="font-size:14px;color:var(--ink-mute)">安心手记 0.5.3</div>
+        <div class="label" style="font-size:14px;color:var(--ink-mute)">安心手记 0.5.4</div>
       </div>
     </div>
   </section>
@@ -1146,10 +1169,11 @@
 
   function blank() {
     return {
-      version: 4,
+      version: 5,
       onboarded: false,
       meds: [],
       remind: true,
+      reminderLeadMin: 0,
       doses: {},
       stress: [],
       methods: SEED_METHODS.slice(),
@@ -1162,6 +1186,7 @@
     if (data.version < 2 || !data.meds) toV2(data);
     if (data.version < 3) toV3(data);
     if (data.version < 4) toV4(data);
+    if (data.version < 5) toV5(data);
     return data;
   }
 
@@ -1237,6 +1262,12 @@
     data.version = 4;
   }
 
+  /** v5：提醒时间与服药时间分开；旧用户仍按原来的准时提醒。 */
+  function toV5(data) {
+    data.reminderLeadMin = 0;
+    data.version = 5;
+  }
+
   function load() {
     var raw = "";
     try {
@@ -1253,7 +1284,7 @@
       if (!data) loadBroken = true;
     }
     if (!data || typeof data !== "object") data = blank();
-    var wasOld = data.version !== 4 || !data.meds;
+    var wasOld = data.version !== 5 || !data.meds;
     data = migrate(data);
     if (wasOld) needsPersist = true;
 
@@ -2363,6 +2394,8 @@
   function renderSettings() {
     renderMedEditors();
     document.getElementById("st-remind").classList.toggle("on", !!state.remind);
+    document.getElementById("st-remind-lead").value =
+      String(Number(state.reminderLeadMin) || 0);
     renderRemindLine();
     renderAlert();
     renderTagManager();
@@ -2375,13 +2408,18 @@
    */
   function renderRemindLine() {
     var box = document.getElementById("st-remind-desc");
-    if (!state.remind) { box.textContent = "打开之后到点会静静弹一条，不响"; return; }
+    var lead = Number(state.reminderLeadMin) || 0;
+    var timing = lead > 0 ? "提前 " + lead + " 分钟" : "按服药时间";
+    if (!state.remind) {
+      box.textContent = "打开后" + timing + "静静弹一条，不响";
+      return;
+    }
 
     var at = nextReminderStamp();
     if (!at) { box.textContent = "静静弹一条，不响。药还没设好时间"; return; }
     var when = new Date(at);
     var day = dayKey(when) === dayKey(new Date()) ? "今天" : "明天";
-    box.textContent = "下次 " + day + " " + hm(when) + " · 静静弹一条，不响";
+    box.textContent = "下次提醒 " + day + " " + hm(when) + " · " + timing + "，不响";
   }
 
   /**
@@ -2394,7 +2432,7 @@
    */
   function renderAlert() {
     var box = document.getElementById("st-alert");
-    var row = document.getElementById("st-remind-row");
+    var row = document.getElementById("st-remind-lead-row");
     box.innerHTML = "";
     row.classList.add("flush");
     if (!state.remind || !native) return;
@@ -2455,11 +2493,12 @@
     if (!armed) return null;
     var last = parseInt(safeCall("lastFireAt", "0"), 10) || 0;
     var now = Date.now();
+    var lead = Number(state.reminderLeadMin) || 0;
 
     var latest = null;
     slotsOn(dayKey(new Date())).forEach(function (slot) {
       if (!slot.time) return;
-      var at = atToday(slot.time);
+      var at = atToday(slot.time) - lead * 60000;
       // 留 10 分钟宽限：系统晚几分钟送到是正常的，别抢在它前面报错。
       if (now - at < 10 * 60000) return;
       if (at < armed + 5 * 60000) return;
@@ -2847,6 +2886,13 @@
       if (state.remind && native && !safeCall("notificationsEnabled", true)) {
         safeCall("requestNotifications");
       }
+      renderRemindLine();
+      renderAlert();
+    };
+
+    document.getElementById("st-remind-lead").onchange = function () {
+      state.reminderLeadMin = parseInt(this.value, 10) || 0;
+      save();
       renderRemindLine();
       renderAlert();
     };

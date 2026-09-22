@@ -475,7 +475,9 @@ public class MainActivity extends Activity {
         public String previewReminder() {
             java.util.List<String> slots = Reminders.activeSlots(MainActivity.this);
             if (slots.isEmpty()) return "还没有填好时间的药";
-            return Reminders.notifySlot(MainActivity.this, slots.get(0), true);
+            return Reminders.notifySlot(
+                MainActivity.this, slots.get(0), Store.todayKey(), true
+            );
         }
     }
 }

@@ -21,12 +21,13 @@ public class ReminderReceiver extends BroadcastReceiver {
 
         if (ACTION_FIRE.equals(action)) {
             String slot = intent.getStringExtra(Reminders.EXTRA_SLOT);
+            String doseDay = intent.getStringExtra(Reminders.EXTRA_DOSE_DAY);
             if (slot != null && !slot.isEmpty()) {
                 // 先记下「闹钟确实响到了」，再决定要不要弹通知。
                 // 顺序很重要：这一顿可能已经吃过了不弹，但闹钟是响了的。
                 Reminders.recordFire(context, slot);
                 // 这一顿已经自己记过了，notifySlot 内部会跳过，不多响一声。
-                Reminders.notifySlot(context, slot, false);
+                Reminders.notifySlot(context, slot, doseDay, false);
             }
             Reminders.rescheduleAll(context);
             return;
