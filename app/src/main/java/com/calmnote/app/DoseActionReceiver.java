@@ -20,11 +20,14 @@ public class DoseActionReceiver extends BroadcastReceiver {
         String slot = intent.getStringExtra(Reminders.EXTRA_SLOT);
         if (slot == null || slot.isEmpty()) return;
 
-        String today = Store.todayKey();
+        String doseDay = intent.getStringExtra(Reminders.EXTRA_DOSE_DAY);
+        if (doseDay == null || doseDay.isEmpty()) doseDay = Store.todayKey();
         int marked = 0;
-        for (Store.Item item : Store.itemsOn(Store.meds(context), today)) {
+        for (Store.Item item : Store.itemsOn(Store.meds(context), doseDay)) {
             if (!item.at().equals(slot)) continue;
-            if (Store.markDose(context, today, item.medId(), item.timeId(), "notification")) {
+            if (Store.markDose(
+                context, doseDay, item.medId(), item.timeId(), "notification"
+            )) {
                 marked++;
             }
         }

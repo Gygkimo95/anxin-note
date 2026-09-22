@@ -11,7 +11,6 @@ import android.os.Build;
 import android.os.IBinder;
 
 import java.util.Calendar;
-import java.util.List;
 
 /**
  * 常驻前台服务，把进程钉在内存里。
@@ -23,8 +22,7 @@ import java.util.List;
  * 只要提醒已开启且有有效时间，它就自动运行。用户既然开启了提醒，就不该再知道
  * “保活”这种实现细节，更不该因为漏开一个排查开关而收不到提醒。
  *
- * 那条常驻通知顺便当了「一眼就看到」的入口：它写的是「下次 21:00 · 舍曲林」，
- * 正好是首页最想告诉用户的那句话，不用打开 App 就能看见。
+ * 那条常驻通知只写下次提醒时间，不出现药名或剂量。
  */
 public class KeepAliveService extends Service {
 
@@ -102,13 +100,13 @@ public class KeepAliveService extends Service {
             .setShowWhen(false)
             .setContentIntent(PendingIntent.getActivity(this, NOTIFY_ID, open, flags));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            // 锁屏上不显示内容：通知栏里写着吃什么药，不该在别人能看见的地方。
+            // 锁屏上不显示常驻内容，进一步减少健康信息暴露。
             builder.setVisibility(Notification.VISIBILITY_SECRET);
         }
         return builder.build();
     }
 
-    /** 「下次 21:00 · 舍曲林」。排不上就说一句中性的话，不提示任何问题。 */
+    /** 「下次提醒 21:00」。不在通知栏暴露药名或剂量。 */
     private String nextLine() {
         long at = Reminders.soonestTrigger(this);
         if (at <= 0) return "在帮你记着";
@@ -121,18 +119,7 @@ public class KeepAliveService extends Service {
         boolean today = when.get(Calendar.DAY_OF_YEAR) == now.get(Calendar.DAY_OF_YEAR)
             && when.get(Calendar.YEAR) == now.get(Calendar.YEAR);
 
-        StringBuilder names = new StringBuilder();
-        List<Store.Item> items = Store.itemsOn(Store.meds(this), Store.todayKey());
-        for (Store.Item item : items) {
-            if (!slot.equals(item.at())) continue;
-            String name = item.med.optString("name", "").trim();
-            if (name.isEmpty() || names.indexOf(name) >= 0) continue;
-            if (names.length() > 0) names.append("、");
-            names.append(name);
-        }
-
-        String head = "下次 " + (today ? "" : "明天 ") + slot;
-        return names.length() > 0 ? head + " · " + names : head;
+        return "下次提醒 " + (today ? "" : "明天 ") + slot;
     }
 
     private static String pad(int n) {
